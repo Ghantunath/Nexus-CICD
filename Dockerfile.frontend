@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install serve for static file serving
+RUN npm install -g pnpm serve
+
+# Copy and install deps
+COPY frontend/package.json frontend/pnpm-lock.yaml* ./
+RUN pnpm install
+
+# Copy source and build
+COPY frontend/ ./
+RUN pnpm build
+
+# Serve the built files
+CMD ["serve", "-s", "dist", "-l", "5173"]
+EXPOSE 5173
