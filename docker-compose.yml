@@ -3,6 +3,11 @@ version: "3.9"
 services:
   db:
     image: 176386839925.dkr.ecr.eu-north-1.amazonaws.com/text2sql-db:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+      platforms:
+        - linux/amd64
 
     restart: always
     volumes:
@@ -24,6 +29,12 @@ services:
 
   backend:
     image: 176386839925.dkr.ecr.eu-north-1.amazonaws.com/text2sql-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      platforms:
+        - linux/amd64
+
     container_name: backend
     restart: always
     volumes:
@@ -52,6 +63,12 @@ services:
 
   frontend:
     image: 176386839925.dkr.ecr.eu-north-1.amazonaws.com/text2sql-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      platforms:
+        - linux/amd64
+
     container_name: temp-text2sql-frontend
     restart: always
     ports:
