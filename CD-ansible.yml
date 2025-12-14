@@ -1,0 +1,39 @@
+name: CD - Deploy via Ansible
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt update
+          sudo apt install -y ansible
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create Ansible inventory
+        run: |
+          mkdir -p infra
+          cat > infra/inventory.ini << EOF
+          [denya]
+          ${{ secrets.DEPLOY_HOST }} ansible_user=${{ secrets.DEPLOY_USER }}
+          EOF
+
+      - name: Run Ansible deployment
+        env:
+          REGISTRY: ${{ secrets.NEXUS_REGISTRY }}
+        run: |
+          ansible-playbook -i infra/inventory.ini infra/deploy.yml \
+            --extra-vars "registry=$REGISTRY"
