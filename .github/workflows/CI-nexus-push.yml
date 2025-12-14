@@ -1,0 +1,45 @@
+name: CI - Compose Build & Push to Nexus
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ${{ secrets.NEXUS_REGISTRY }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout source
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # Login to Nexus (replaces AWS ECR login)
+      - name: Login to Nexus
+        run: |
+          echo "${{ secrets.NEXUS_PASSWORD }}" | \
+          docker login $REGISTRY \
+            -u "${{ secrets.NEXUS_USERNAME }}" \
+            --password-stdin
+
+      # Build images using docker-compose 
+      - name: Build images with docker compose
+        run: |
+          docker compose -f docker-compose.yml build
+
+      # Tag images for Nexus 
+      - name: Tag images
+        run: |
+          docker tag danya-prod-text2sql-frontend:latest  $REGISTRY/text2sql-frontend:latest
+          docker tag danya-prod-text2sql-backend:latest $REGISTRY/text2sql-backend:latest
+          docker tag danya-prod-text2sql-db:latest       $REGISTRY/text2sql-db:latest
+
+      # Push images to Nexus
+      - name: Push images
+        run: |
+          docker push $REGISTRY/text2sql-backend:latest
+          docker push $REGISTRY/text2sql-frontend:latest
+          docker push $REGISTRY/text2sql-db:latest
