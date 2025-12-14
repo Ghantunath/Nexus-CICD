@@ -1,0 +1,69 @@
+################################ 1 – build stage ################################
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+# Build deps needed to compile psycopg / other wheels
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev unixodbc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install gunicorn        # <— add if not in requirements.txt
+
+
+COPY . .
+ENV DJANGO_SETTINGS_MODULE=text2sql.production_settings
+RUN mkdir -p /app/staticfiles /app/logs && python manage.py collectstatic --noinput
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    build-essential \
+    libpq-dev \
+    unixodbc \
+    unixodbc-dev \
+    gnupg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Microsoft ODBC repo securely
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
+
+# Install Microsoft ODBC Driver 18
+RUN apt-get update && ACCEPT_EULA=Y apt-get install -y \
+    msodbcsql18 \
+    mssql-tools18
+
+# Symlink the ODBC driver to a generic name for unixODBC
+RUN sh -c 'ln -sf $(find /opt/microsoft/msodbcsql18/lib64 -name "libmsodbcsql-18*.so.*" | head -n 1) /opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.so'
+
+
+# Register the driver explicitly in odbcinst.ini
+RUN echo "[ODBC Driver 18 for SQL Server]\n\
+Description=Microsoft ODBC Driver 18 for SQL Server\n\
+Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.so\n\
+UsageCount=1" > /etc/odbcinst.ini
+
+# copy Python packages and CLI entry-points built in stage1
+COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
+COPY --from=builder /usr/local/bin           /usr/local/bin
+COPY --from=builder /app /app
+COPY --from=builder /app/staticfiles /app/staticfiles
+
+EXPOSE 8000
+CMD ["gunicorn", "text2sql.wsgi:application", "-b", "0.0.0.0:8000", "--workers", "2", "--timeout", "120", "--threads", "8"]
